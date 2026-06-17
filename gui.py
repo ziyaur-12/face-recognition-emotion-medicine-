@@ -1,3 +1,6 @@
+encodeListKnown = []
+classNames = []
+pkl_path = ""
 import os
 from tkinter import ttk
 import os
@@ -140,12 +143,24 @@ def select_pkl_file():
 
 def load_encodings():
     global encodeListKnown, classNames
+
     try:
         with open(pkl_path, 'rb') as f:
             encodeListKnown, classNames = pickle.load(f)
-    except FileNotFoundError:
-        messagebox.showerror("Error", "Encoding file not found. Please generate encodings first.")
-        encodeListKnown, classNames = [], []
+
+        messagebox.showinfo(
+            "Success",
+            f"{len(classNames)} faces loaded successfully."
+        )
+
+    except Exception as e:
+        messagebox.showerror(
+            "Error",
+            str(e)
+        )
+
+        encodeListKnown = []
+        classNames = []
 
 def detect_faces_live():
     cap = cv2.VideoCapture(0)  # Use the default camera
@@ -156,7 +171,7 @@ def detect_faces_live():
             break
 
         # Resize the image for processing
-        img = cv2.resize(img, (100, 60))  # Resize the frame for quicker processing
+        img = cv2.resize(img, (640, 480))  # Resize the frame for quicker processing
         face_locations = face_recognition.face_locations(img)
         encodings = face_recognition.face_encodings(img, face_locations)
 
@@ -194,36 +209,98 @@ def detect_faces_live():
 
 
 def detect_faces_image():
-    file_path = filedialog.askopenfilename()
+    global encodeListKnown, classNames
+
+    if not encodeListKnown:
+        messagebox.showerror(
+            "Error",
+            "Please select a valid .pkl file first."
+        )
+        return
+
+    file_path = filedialog.askopenfilename(
+        filetypes=[
+            ("Image Files", "*.jpg *.jpeg *.png *.bmp")
+        ]
+    )
+
     if not file_path:
         return
 
     img = cv2.imread(file_path)
+
     if img is None:
         messagebox.showerror("Error", "Failed to load image.")
         return
 
-    img = resize_image(img, width=800)  # Resize the image to a consistent width
+    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    face_locations = face_recognition.face_locations(img)
-    encodings = face_recognition.face_encodings(img, face_locations)
+    face_locations = face_recognition.face_locations(rgb_img)
 
-    for (top, right, bottom, left), encode_face in zip(face_locations, encodings):
-        matches = face_recognition.compare_faces(encodeListKnown, encode_face)
-        faceDis = face_recognition.face_distance(encodeListKnown, encode_face)
-        matchIndex = np.argmin(faceDis)
+    if len(face_locations) == 0:
+        messagebox.showinfo(
+            "No Face Found",
+            "No face detected in selected image."
+        )
+        return
 
-        if matches[matchIndex]:
-            name = classNames[matchIndex].upper()
-            cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
-            cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-            cv2.putText(img, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 0), 2)
-            markAttendance(name)
-        else:
-            markUnknownFace()
-            cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
-            cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-            cv2.putText(img, "Unknown", (left + 6, bottom - 6), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
+    encodings = face_recognition.face_encodings(
+        rgb_img,
+        face_locations
+    )
+
+    for (top, right, bottom, left), encode_face in zip(
+            face_locations,
+            encodings):
+
+        matches = face_recognition.compare_faces(
+            encodeListKnown,
+            encode_face
+        )
+
+        faceDis = face_recognition.face_distance(
+            encodeListKnown,
+            encode_face
+        )
+
+        name = "Unknown"
+
+        if len(faceDis) > 0:
+            matchIndex = np.argmin(faceDis)
+
+            if matches[matchIndex]:
+                name = classNames[matchIndex].upper()
+                markAttendance(name)
+            else:
+                markUnknownFace()
+
+        color = (0, 255, 0)
+
+        cv2.rectangle(
+            img,
+            (left, top),
+            (right, bottom),
+            color,
+            2
+        )
+
+        cv2.rectangle(
+            img,
+            (left, bottom - 35),
+            (right, bottom),
+            color,
+            cv2.FILLED
+        )
+
+        cv2.putText(
+            img,
+            name,
+            (left + 6, bottom - 6),
+            cv2.FONT_HERSHEY_COMPLEX,
+            0.8,
+            (255, 255, 255),
+            2
+        )
 
     display_result(img)
 
